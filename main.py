@@ -14,11 +14,36 @@ from sklearn_extra.cluster import KMedoids
 from sklearn.cluster import KMeans
 from skimage.feature import local_binary_pattern
 
-import time
+
+##########################################################################################
+##########################################################################################
+
+folder = "/hdd1/works/datasets/ssd1/DIV2K_train_HR"
+
+# 꼭 sorted 사용해주기.
+imagePaths = sorted(glob.glob(f"{folder}/*.png"))  # [0:30]
+
+print(f"db len : {len(imagePaths)}")
+print(f"cpu count : {cpu_count()}")
+
+# 초기 값 설정.
+color_weight = 1
+lbp_weight = 5
+ems_weight = 100
+
+bit_depth_16 = False
+
+# clustering 가시화
+clustering_vis = False
+
+
+##########################################################################################
+##########################################################################################
 
 
 def sixteen2eight_bit(img):
-    img = img / (2**16 - 1) * 255
+    if bit_depth_16:
+        img = img / (2**16 - 1) * 255
     return img
 
 
@@ -36,13 +61,14 @@ def get_yuv_histogram(yuv, uv_down_scale, bins):
     # 영상의 사이즈대로 정규화를 해준다.
     yuv_histogram = yuv_histogram / (yuv.shape[0] * yuv.shape[1])
 
-    weight = 1
-    return yuv_histogram * weight
+    return yuv_histogram * color_weight
 
 
 def get_lbp_histogram(y, radius=1, n_points=8):
     # get local_binary_pattern
     # settings for LBP
+    y = sixteen2eight_bit(y)
+
     METHOD = 'uniform'
 
     # get lbp
@@ -55,8 +81,7 @@ def get_lbp_histogram(y, radius=1, n_points=8):
     # 영상의 사이즈대로 정규화를 해준다.
     lbp_histogram = lbp_histogram / (y.shape[0] * y.shape[1])
 
-    weight = 5
-    return lbp_histogram * weight
+    return lbp_histogram * lbp_weight
 
 
 def get_edge_magnitude_sum(y):
@@ -87,8 +112,7 @@ def get_edge_magnitude_sum(y):
 
     edge_magnitude_sum = np.sum(my_magnitude) / (my_magnitude.shape[0] * my_magnitude.shape[1])
 
-    weight = 50
-    return edge_magnitude_sum * weight
+    return edge_magnitude_sum * ems_weight
 
 
 def image2patches(img, img_name):
@@ -181,16 +205,6 @@ def image2patches(img, img_name):
 ##########################################################################################
 ##########################################################################################
 
-folder = "/hdd1/works/datasets/ssd1/HDR_DB/kdw_small"
-group_count = 500
-
-# 꼭 sorted 사용해주기.
-imagePaths = sorted(glob.glob(f"{folder}/*.tif"))[0:30]
-
-print(f"db len : {len(imagePaths)}")
-print(f"cpu count : {cpu_count()}")
-
-
 def read_image_and_get_patches(img_dir):
     # 읽고
     img = cv2.imread(img_dir, cv2.IMREAD_UNCHANGED).astype(np.float32)
@@ -237,6 +251,14 @@ print(f'group3 : {target_to_group3.shape}, min : {np.min(target_to_group3)}, max
 print(f'group4 : {target_to_group4.shape}, min : {np.min(target_to_group4)}, max : {np.max(target_to_group4)}')
 print(f'group : {target_to_group.shape}')
 
+reduction_percentage = 10
+group_count = int(target_to_group.shape[0] * (reduction_percentage / 100))
+
+print(f'new group len : {group_count}')
+
+##########################################################################################
+##########################################################################################
+
 # k-medoids 알고리즘을 적용해준다.
 target_to_group_reshaped = target_to_group
 kmedoids = KMedoids(n_clusters=group_count,  max_iter=1000, method='pam', init='k-medoids++').fit(target_to_group_reshaped)
@@ -245,7 +267,7 @@ kmedoids = KMedoids(n_clusters=group_count,  max_iter=1000, method='pam', init='
 ##########################################################################################
 ##########################################################################################
 
-result_name = "temp3w5_4w50"
+result_name = f"color{color_weight}_lbp{lbp_weight}_ems{ems_weight}"
 
 # 어떤식으로 label 이 나눠졌는지 가시화 해보자.
 result_dir = f'results/{result_name}'
@@ -280,8 +302,10 @@ def imwrite_with_patch_info(patch_idxs_per_img):
         cropped_img = img[i:(i + h), j:(j + w), :]
         n = os.path.splitext(n)[0]
 
-        # 영상 write 하기.
-        cv2.imwrite(f'{result_dir}/{label}__{n}__{i}_{j}_{h}_{w}.png', sixteen2eight_bit(cropped_img))
+        if clustering_vis:
+            # 영상 write 하기.
+            y_temp = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2YUV)
+            cv2.imwrite(f'{result_dir}/{label}__{n}__{i}_{j}_{h}_{w}.png', sixteen2eight_bit(y_temp[:, :, 0]))
 
         # centor 영상 write 하기.
         if centor:
@@ -298,9 +322,10 @@ pool.join()
 progressive_bar.close()
 
 
-for label in range(group_count):
-    black = np.zeros((30,30))
-    cv2.imwrite(f'{result_dir}/{label}.png', black)
+if clustering_vis:
+    for label in range(group_count):
+        black = np.ones((1, 1)) * 255
+        cv2.imwrite(f'{result_dir}/{label}.png', black)
 
 
 
