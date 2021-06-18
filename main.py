@@ -18,7 +18,7 @@ from skimage.feature import local_binary_pattern
 ##########################################################################################
 ##########################################################################################
 
-folder = "/hdd1/works/datasets/ssd1/DIV2K_train_HR"
+folder = "/hdd1/works/datasets/ssd1/DIV2K_train/DIV2K_train_HR"
 
 # 꼭 sorted 사용해주기.
 imagePaths = sorted(glob.glob(f"{folder}/*.png"))  # [0:30]
@@ -29,7 +29,10 @@ print(f"cpu count : {cpu_count()}")
 # 초기 값 설정.
 color_weight = 1
 lbp_weight = 5
-ems_weight = 100
+ems_weight = 500
+
+# 데이터 셋을 몇 퍼센트나 줄일 것인가?
+reduction_percentage = 0.5
 
 bit_depth_16 = False
 
@@ -251,7 +254,7 @@ print(f'group3 : {target_to_group3.shape}, min : {np.min(target_to_group3)}, max
 print(f'group4 : {target_to_group4.shape}, min : {np.min(target_to_group4)}, max : {np.max(target_to_group4)}')
 print(f'group : {target_to_group.shape}')
 
-reduction_percentage = 10
+
 group_count = int(target_to_group.shape[0] * (reduction_percentage / 100))
 
 print(f'new group len : {group_count}')
@@ -261,7 +264,8 @@ print(f'new group len : {group_count}')
 
 # k-medoids 알고리즘을 적용해준다.
 target_to_group_reshaped = target_to_group
-kmedoids = KMedoids(n_clusters=group_count,  max_iter=1000, method='pam', init='k-medoids++').fit(target_to_group_reshaped)
+kmedoids = KMedoids(n_clusters=group_count, max_iter=1000, init='k-medoids++').fit(target_to_group_reshaped)
+# max_iter=1000, method='pam',
 
 
 ##########################################################################################
@@ -271,7 +275,8 @@ result_name = f"color{color_weight}_lbp{lbp_weight}_ems{ems_weight}"
 
 # 어떤식으로 label 이 나눠졌는지 가시화 해보자.
 result_dir = f'results/{result_name}'
-os.makedirs(f'{result_dir}', exist_ok=True)
+if clustering_vis:
+    os.makedirs(f'{result_dir}', exist_ok=True)
 
 # centor 를 따로 저장한다.
 centor_dir = f'results/{result_name}_centor'
