@@ -20,10 +20,22 @@ import read_hdr
 ##########################################################################################
 ##########################################################################################
 
-folder = "/hdd1/works/datasets/ssd1/HDR_DB"
+folders = [
+    # "/hdd1/works/datasets/ssd1/HDR_DB",
+    "/hdd1/works/datasets/ssd3/hdr/RAISE/tif",
+    "/hdd1/works/datasets/ssd3/hdr/HDR+/tif"
+    ]
+
+
 
 # 꼭 sorted 사용해주기.
-imagePaths = sorted(glob.glob(f"{folder}/*.hdr"))  #[0:30]  #[2204:2205]
+imagePaths = []
+
+for folder in folders:
+    imgPath = sorted(glob.glob(f"{folder}/*.tif"))
+    imagePaths += imgPath
+
+imagePaths = imagePaths # [0:30]  #[2204:2205]
 
 print(f"db len : {len(imagePaths)}")
 print(f"cpu count : {cpu_count()}")
@@ -34,12 +46,12 @@ lbp_weight = 1
 ems_weight = 1
 
 # 데이터 셋을 몇 퍼센트로 줄일 것인가?
-final_percentage = 4
-reduction_percentage = 5  # 중복을 얼만큼 의도적으로 제거할 것인가?
+final_percentage = 20
+reduction_percentage = 20  # 중복을 얼만큼 의도적으로 제거할 것인가?
 random_prob = final_percentage / reduction_percentage
 
 # clustering 가시화
-clustering_vis = False
+clustering_vis = True
 
 
 ##########################################################################################
@@ -108,7 +120,7 @@ def get_edge_magnitude_sum(y):
     return edge_magnitude_sum * ems_weight
 
 
-def image2patches(img, img_name):
+def image2patches(img, img_dir):
     """
     img 를 patch 단위로 잘라서 반환해준다.
     """
@@ -174,7 +186,7 @@ def image2patches(img, img_name):
 
                 # cropped 된 영상의 정보.
                 # None 은 label 을 담을 자리, False 는 대표가 아님을 True 면 대표임을 의미.
-                patch_idxs.append([img_name, i, j, h, w, None, False])
+                patch_idxs.append([img_dir, i, j, h, w, None, False])
 
                 # 영상의 썸네일.
                 mini_patches[total_count] = cv2.resize(cropped_img, (thumbnail_size, thumbnail_size), interpolation=cv2.INTER_AREA)
@@ -203,7 +215,7 @@ def image2patches(img, img_name):
             h_pos += hl
         return patch_idxs, mini_patches, yuv_histograms, lbp_histograms, edge_magnitude_sums
     else:
-        print(img_name)
+        print(img_dir)
 
 
 ##########################################################################################
@@ -215,7 +227,7 @@ def read_image_and_get_patches(img_dir):
 
     img_name = os.path.basename(img_dir)
     # crop 하고
-    patches = image2patches(img, img_name)
+    patches = image2patches(img, img_dir)
     # tqdm update.
     progressive_bar.update(1)
     return patches
@@ -309,13 +321,13 @@ def decision(probability):
 
 def imwrite_with_patch_info(patch_idxs_per_img):
     # 읽고
-    img = read_hdr.my_imread(f'{folder}/{patch_idxs_per_img[0][0]}')
+    img = read_hdr.my_imread(f'{patch_idxs_per_img[0][0]}')
 
     for patch_info in patch_idxs_per_img:
         # 정보대로 crop 하고
         n, i, j, h, w, label, centor = patch_info
         cropped_img = img[i:(i + h), j:(j + w), :]
-        n = os.path.splitext(n)[0]
+        n = os.path.splitext(os.path.basename(n))[0]
 
         if clustering_vis:
             # 영상 write 하기.
