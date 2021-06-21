@@ -13,6 +13,7 @@ from multiprocessing import cpu_count
 from sklearn_extra.cluster import KMedoids
 from sklearn.cluster import KMeans
 from skimage.feature import local_binary_pattern
+import random
 
 import read_hdr
 
@@ -33,7 +34,9 @@ lbp_weight = 1
 ems_weight = 1
 
 # 데이터 셋을 몇 퍼센트로 줄일 것인가?
-reduction_percentage = 3.5
+final_percentage = 4
+reduction_percentage = 5  # 중복을 얼만큼 의도적으로 제거할 것인가?
+random_prob = final_percentage / reduction_percentage
 
 # clustering 가시화
 clustering_vis = False
@@ -301,6 +304,9 @@ for i in range(len(patch_idxs_per_imgs)):
         label_idx += 1
 
 
+def decision(probability):
+    return random.random() < probability
+
 def imwrite_with_patch_info(patch_idxs_per_img):
     # 읽고
     img = read_hdr.my_imread(f'{folder}/{patch_idxs_per_img[0][0]}')
@@ -319,7 +325,7 @@ def imwrite_with_patch_info(patch_idxs_per_img):
             #cv2.imwrite(f'{result_dir}/{i}_{j}_{h}_{w}.png', cropped_img * 255)
 
         # centor 영상 write 하기.
-        if centor:
+        if centor and decision(random_prob):
             cropped_yuv, w, h = read_hdr.bgr2yuv420(cropped_img, 'yuv')
             # 0~1 to 10bit
             cropped_yuv *= 1023
