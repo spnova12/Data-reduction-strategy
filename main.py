@@ -23,7 +23,7 @@ import read_hdr
 folder = "/hdd1/works/datasets/ssd1/HDR_DB"
 
 # 꼭 sorted 사용해주기.
-imagePaths = sorted(glob.glob(f"{folder}/*.hdr"))  #[0:30]  #[2204:2205]
+imagePaths = sorted(glob.glob(f"{folder}/*.hdr"))  # [0:1000]  #[2204:2205]
 
 print(f"db len : {len(imagePaths)}")
 print(f"cpu count : {cpu_count()}")
@@ -237,124 +237,167 @@ lbp_histograms = [r[3] for r in result if r is not None]
 edge_magnitude_sums = [r[4] for r in result if r is not None]
 
 
+##########################################################################################
+##########################################################################################
+print(patch_idxs_per_imgs[0][0])
+print(len(patch_idxs_per_imgs))
+print(len(patch_idxs_per_imgs[0]))
+print(len(patch_idxs_per_imgs[0][0]))
+print(len(patch_idxs_per_imgs[0][0][0]))
+
+
+
+
+##########################################################################################
+##########################################################################################
+
 # list 에 담긴 여러장의 img 들을 np array 로 묶어(stack) 준다.
+target_to_group0 = np.vstack(patch_idxs_per_imgs)
 target_to_group1 = np.vstack(mini_patches)
 target_to_group1 = np.reshape(target_to_group1, (target_to_group1.shape[0], -1))
 target_to_group2 = np.vstack(yuv_histograms)
 target_to_group3 = np.vstack(lbp_histograms)
 target_to_group4 = np.vstack(edge_magnitude_sums)
 
-
-# k-medoids 알고리즘에 사용할 feature 들을 concat 해준다.
-print(f'\nk-medoids is running...')
-target_to_group = np.concatenate((target_to_group2, target_to_group3, target_to_group4), axis=1)
-
-print(f'\nTotal patches len : {target_to_group.shape[0]}')
-print(f'group1 : {target_to_group1.shape}')
-print(f'group2 : {target_to_group2.shape}, min : {np.min(target_to_group2)}, max : {np.max(target_to_group2)}')
-print(f'group3 : {target_to_group3.shape}, min : {np.min(target_to_group3)}, max : {np.max(target_to_group3)}')
-print(f'group4 : {target_to_group4.shape}, min : {np.min(target_to_group4)}, max : {np.max(target_to_group4)}')
-print(f'group : {target_to_group.shape}')
-
-
-group_count = int(target_to_group.shape[0] * (reduction_percentage / 100))
-
-print(f'new group len : {group_count}')
-
-##########################################################################################
-##########################################################################################
-
-# k-medoids 알고리즘을 적용해준다.
-target_to_group_reshaped = target_to_group
-kmedoids = KMedoids(n_clusters=group_count, max_iter=1000, init='k-medoids++').fit(target_to_group_reshaped)
-# max_iter=1000, method='pam',
-
-
-##########################################################################################
-##########################################################################################
-
-result_name = f"color{color_weight}_lbp{lbp_weight}_ems{ems_weight}"
-
-# 어떤식으로 label 이 나눠졌는지 가시화 해보자.
-result_dir = f'results/{result_name}'
-if clustering_vis:
-    os.makedirs(f'{result_dir}', exist_ok=True)
-
-# centor 를 따로 저장한다.
-centor_dir = f'results/{result_name}_centor'
-os.makedirs(f'{centor_dir}', exist_ok=True)
+# 영상의 복잡한 정도에 따라 정렬해준다.
+group_for_sort = [[g[0], g[1], g[2], g[3], g[4]] for g in zip(target_to_group0, target_to_group1, target_to_group2, target_to_group3, target_to_group4)]
+from operator import itemgetter
+group_for_sort = sorted(group_for_sort, key=itemgetter(4))
 
 # centor (png) 를 따로 저장한다.
-centor_png_dir = f'results/{result_name}_centor_png'
-os.makedirs(f'{centor_png_dir}', exist_ok=True)
+result_dir = f'results/sorting'
+os.makedirs(f'{result_dir}', exist_ok=True)
+for idx, patch_info in tqdm(enumerate(group_for_sort)):
+    img = read_hdr.my_imread(f'{folder}/{patch_info[0][0]}')
+    n, i, j, h, w, label, centor = patch_info[0]
+    cropped_img = img[i:(i + h), j:(j + w), :]
+    n = os.path.splitext(n)[0]
 
+    # 영상 write 하기.
+    # y_temp, w, h = read_hdr.bgr2yuv420(cropped_img, 'y')
+    # cv2.imwrite(f'{result_dir}/{label}__{n}__{i}_{j}_{h}_{w}.png', y_temp * 255)
+    cropped_img = cv2.resize(cropped_img, (150, 150), interpolation=cv2.INTER_AREA)
+    cv2.imwrite(f'{result_dir}/{str(idx).zfill(5)}.jpg', cropped_img * 255)
+    # cv2.imwrite(f'{result_dir}/{i}_{j}_{h}_{w}.png', cropped_img * 255)
 
-# patch_idxs_per_imgs 에 구해진 label 정보를 넣어준다.
-label_idx = 0
-for i in range(len(patch_idxs_per_imgs)):
-    for j in range(len(patch_idxs_per_imgs[i])):
-        label = kmedoids.labels_[label_idx]
-
-        patch_idxs_per_imgs[i][j][-2] = label
-
-        if label_idx in kmedoids.medoid_indices_:
-            patch_idxs_per_imgs[i][j][-1] = True
-
-
-        label_idx += 1
-
-
-def decision(probability):
-    return random.random() < probability
-
-def imwrite_with_patch_info(patch_idxs_per_img):
-    # 읽고
-    img = read_hdr.my_imread(f'{folder}/{patch_idxs_per_img[0][0]}')
-
-    for patch_info in patch_idxs_per_img:
-        # 정보대로 crop 하고
-        n, i, j, h, w, label, centor = patch_info
-        cropped_img = img[i:(i + h), j:(j + w), :]
-        n = os.path.splitext(n)[0]
-
-        if clustering_vis:
-            # 영상 write 하기.
-            # y_temp, w, h = read_hdr.bgr2yuv420(cropped_img, 'y')
-            # cv2.imwrite(f'{result_dir}/{label}__{n}__{i}_{j}_{h}_{w}.png', y_temp * 255)
-            cv2.imwrite(f'{result_dir}/{label}__{n}__{i}_{j}_{h}_{w}.jpg', cropped_img * 255)
-            #cv2.imwrite(f'{result_dir}/{i}_{j}_{h}_{w}.png', cropped_img * 255)
-
-        # centor 영상 write 하기.
-        if centor and decision(random_prob):
-            cropped_yuv, w, h = read_hdr.bgr2yuv420(cropped_img, 'yuv')
-            # 0~1 to 10bit
-            cropped_yuv *= 1023
-            cropped_yuv = np.around(cropped_yuv)
-            cropped_yuv = np.clip(cropped_yuv, 0, 1023)
-            # center_name = f'{label}__{n}__{i}_{j}_{w}x{h}'
-            center_name = f'{n}__{i}_{j}_{w}x{h}'
-            # save yuv420
-            with open(f'{centor_dir}/{center_name}_10bit.yuv', "wb") as f_yuv:
-                f_yuv.write(cropped_yuv.astype('uint16').tobytes())
-
-            cropped_img = cv2.resize(cropped_img, (150, 150), interpolation=cv2.INTER_AREA)
-            cv2.imwrite(f'{centor_png_dir}/{center_name}.jpg', cropped_img * 255)
-
-    progressive_bar.update(1)
-
-
-pool = ThreadPool(cpu_count())
-progressive_bar = tqdm(total=len(patch_idxs_per_imgs))
-result = pool.map(imwrite_with_patch_info, patch_idxs_per_imgs)
-pool.close()
-pool.join()
-progressive_bar.close()
-
-
-if clustering_vis:
-    for label in range(group_count):
-        red = np.array([[[1,0,0]]]) * 255
-        cv2.imwrite(f'{result_dir}/{label}.png', red)
-
-
-
+#########################################################################################
+#########################################################################################
+#
+#
+#
+# # k-medoids 알고리즘에 사용할 feature 들을 concat 해준다.
+# print(f'\nk-medoids is running...')
+# target_to_group = np.concatenate((target_to_group2, target_to_group3, target_to_group4), axis=1)
+#
+# print(f'\nTotal patches len : {target_to_group.shape[0]}')
+# print(f'group1 : {target_to_group1.shape}')
+# print(f'group2 : {target_to_group2.shape}, min : {np.min(target_to_group2)}, max : {np.max(target_to_group2)}')
+# print(f'group3 : {target_to_group3.shape}, min : {np.min(target_to_group3)}, max : {np.max(target_to_group3)}')
+# print(f'group4 : {target_to_group4.shape}, min : {np.min(target_to_group4)}, max : {np.max(target_to_group4)}')
+# print(f'group : {target_to_group.shape}')
+#
+#
+# group_count = int(target_to_group.shape[0] * (reduction_percentage / 100))
+#
+# print(f'new group len : {group_count}')
+#
+#
+#
+#
+# #########################################################################################
+# #########################################################################################
+#
+# # k-medoids 알고리즘을 적용해준다.
+# target_to_group_reshaped = target_to_group
+# kmedoids = KMedoids(n_clusters=group_count, max_iter=1000, init='k-medoids++').fit(target_to_group_reshaped)
+# # max_iter=1000, method='pam',
+#
+#
+# ##########################################################################################
+# ##########################################################################################
+#
+# result_name = f"color{color_weight}_lbp{lbp_weight}_ems{ems_weight}"
+#
+# # 어떤식으로 label 이 나눠졌는지 가시화 해보자.
+# result_dir = f'results/{result_name}'
+# if clustering_vis:
+#     os.makedirs(f'{result_dir}', exist_ok=True)
+#
+# # centor 를 따로 저장한다.
+# centor_dir = f'results/{result_name}_centor'
+# os.makedirs(f'{centor_dir}', exist_ok=True)
+#
+# # centor (png) 를 따로 저장한다.
+# centor_png_dir = f'results/{result_name}_centor_png'
+# os.makedirs(f'{centor_png_dir}', exist_ok=True)
+#
+#
+# # patch_idxs_per_imgs 에 구해진 label 정보를 넣어준다.
+# label_idx = 0
+# for i in range(len(patch_idxs_per_imgs)):
+#     for j in range(len(patch_idxs_per_imgs[i])):
+#         label = kmedoids.labels_[label_idx]
+#
+#         patch_idxs_per_imgs[i][j][-2] = label
+#
+#         if label_idx in kmedoids.medoid_indices_:
+#             patch_idxs_per_imgs[i][j][-1] = True
+#
+#
+#         label_idx += 1
+#
+#
+# def decision(probability):
+#     return random.random() < probability
+#
+# def imwrite_with_patch_info(patch_idxs_per_img):
+#     # 읽고
+#     img = read_hdr.my_imread(f'{folder}/{patch_idxs_per_img[0][0]}')
+#
+#     for patch_info in patch_idxs_per_img:
+#         # 정보대로 crop 하고
+#         n, i, j, h, w, label, centor = patch_info
+#         cropped_img = img[i:(i + h), j:(j + w), :]
+#         n = os.path.splitext(n)[0]
+#
+#         if clustering_vis:
+#             # 영상 write 하기.
+#             # y_temp, w, h = read_hdr.bgr2yuv420(cropped_img, 'y')
+#             # cv2.imwrite(f'{result_dir}/{label}__{n}__{i}_{j}_{h}_{w}.png', y_temp * 255)
+#             cv2.imwrite(f'{result_dir}/{label}__{n}__{i}_{j}_{h}_{w}.jpg', cropped_img * 255)
+#             #cv2.imwrite(f'{result_dir}/{i}_{j}_{h}_{w}.png', cropped_img * 255)
+#
+#         # centor 영상 write 하기.
+#         if centor and decision(random_prob):
+#             cropped_yuv, w, h = read_hdr.bgr2yuv420(cropped_img, 'yuv')
+#             # 0~1 to 10bit
+#             cropped_yuv *= 1023
+#             cropped_yuv = np.around(cropped_yuv)
+#             cropped_yuv = np.clip(cropped_yuv, 0, 1023)
+#             # center_name = f'{label}__{n}__{i}_{j}_{w}x{h}'
+#             center_name = f'{n}__{i}_{j}_{w}x{h}'
+#             # save yuv420
+#             with open(f'{centor_dir}/{center_name}_10bit.yuv', "wb") as f_yuv:
+#                 f_yuv.write(cropped_yuv.astype('uint16').tobytes())
+#
+#             cropped_img = cv2.resize(cropped_img, (150, 150), interpolation=cv2.INTER_AREA)
+#             cv2.imwrite(f'{centor_png_dir}/{center_name}.jpg', cropped_img * 255)
+#
+#     progressive_bar.update(1)
+#
+#
+# pool = ThreadPool(cpu_count())
+# progressive_bar = tqdm(total=len(patch_idxs_per_imgs))
+# result = pool.map(imwrite_with_patch_info, patch_idxs_per_imgs)
+# pool.close()
+# pool.join()
+# progressive_bar.close()
+#
+#
+# if clustering_vis:
+#     for label in range(group_count):
+#         red = np.array([[[1,0,0]]]) * 255
+#         cv2.imwrite(f'{result_dir}/{label}.png', red)
+#
+#
+#
