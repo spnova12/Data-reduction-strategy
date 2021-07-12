@@ -8,8 +8,8 @@
 - [random_sample_with_resize.py](random_sample_with_resize.py) : random 하게 down scale 하여 저장하는 코드.
 
 ## etc
-[custom_kmedoids](custom_kmedoids) : 실제로 사용하지는 않음. 
-[read_hdr.py](read_hdr.py) : 24bit 의 영상을 8bit 영상으로 rendering 하는 코드. 
+- [custom_kmedoids](custom_kmedoids) : 실제로 사용하지는 않음.  
+- [read_hdr.py](read_hdr.py) : 24bit 의 영상을 8bit 영상으로 rendering 하는 코드.   
 
 ## Sequence
 1. hdr 영상들 중 gt 영상만 모두 모아주자. 
