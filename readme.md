@@ -1,4 +1,6 @@
 # Data reduction strategy (code)
+대용량의 16, 24 bit 영상들을 중복되는 것들을 제거한 후 10bit yuv420 으로 저장해주는 프로젝트
+
 
 ## Main codes 
 - [main.py](main.py) : 대용량의 이미지들에서 feature(color, local_binary_pattern, edge_magnitude)를 추출하여 KMedoids 를 이용해서 
